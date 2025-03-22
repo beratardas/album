@@ -10,6 +10,21 @@ const unsplash = createApi({
   fetch: fetch
 });
 
+interface UnsplashPhoto {
+  id: string;
+  urls: {
+    raw: string;
+    full: string;
+    regular: string;
+    small: string;
+    thumb: string;
+  };
+  description: string | null;
+  user: {
+    name: string;
+  };
+}
+
 interface Photo {
   id: string;
   url: string;
@@ -55,8 +70,7 @@ export default function PhotoGrid() {
       });
 
       if (result.type === 'success') {
-        console.log('Unsplash API response:', result.response.results);
-        const newPhotos = result.response.results.map((photo: any, index) => {
+        const newPhotos = result.response.results.map((photo: UnsplashPhoto, index) => {
           const size = photoSizes[index % photoSizes.length];
           return {
             id: photo.id,
@@ -100,7 +114,7 @@ export default function PhotoGrid() {
     }
 
     return () => observer.disconnect();
-  }, [loading, page]);
+  }, [loading, page, loadPhotos]);
 
   if (error) {
     return (
@@ -185,10 +199,13 @@ export default function PhotoGrid() {
               aspectRatio: `${photo.width}/${photo.height}`
             }}
           >
-            <img
+            <Image
               src={photo.url}
               alt={photo.title}
-              loading="lazy"
+              width={photo.width}
+              height={photo.height}
+              className="w-full h-full object-cover rounded-lg"
+              priority={parseInt(photo.id) <= 4}
             />
             <div className="photo-overlay" />
             <div className="photo-info">

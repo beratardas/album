@@ -2,9 +2,29 @@ import { createApi } from 'unsplash-js';
 import { NextResponse } from 'next/server';
 import nodeFetch from 'node-fetch';
 
+interface UnsplashResponse {
+  type: string;
+  response: {
+    results: Array<{
+      id: string;
+      urls: {
+        raw: string;
+        full: string;
+        regular: string;
+        small: string;
+        thumb: string;
+      };
+      description: string | null;
+      user: {
+        name: string;
+      };
+    }>;
+  };
+}
+
 const unsplash = createApi({
   accessKey: 'gekGPNspSMkLv7gpmu5HoxwLOF53gy5Jf7OM3dzI9tA',
-  fetch: nodeFetch as any,
+  fetch: nodeFetch as unknown as typeof fetch,
 });
 
 export const dynamic = 'force-dynamic';
@@ -21,7 +41,7 @@ export async function GET(request: Request) {
     const result = await unsplash.photos.list({
       page,
       perPage: 8,
-    });
+    }) as UnsplashResponse;
 
     clearTimeout(timeoutId);
 
