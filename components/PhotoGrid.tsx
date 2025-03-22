@@ -1,14 +1,17 @@
 'use client';
 
-import Image from 'next/image';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import Masonry from 'react-masonry-css';
-import { createApi } from 'unsplash-js';
+import Image from 'next/image';
 
-const unsplash = createApi({
-  accessKey: 'gekGPNspSMkLv7gpmu5HoxwLOF53gy5Jf7OM3dzI9tA',
-  fetch: fetch
-});
+interface Photo {
+  id: string;
+  url: string;
+  width: number;
+  height: number;
+  description: string | null;
+  photographer: string;
+}
 
 interface UnsplashPhoto {
   id: string;
@@ -25,202 +28,141 @@ interface UnsplashPhoto {
   };
 }
 
-interface Photo {
-  id: string;
-  url: string;
-  title: string;
-  photographer: string;
-  width: number;
-  height: number;
+interface PhotoGridProps {
+  initialPhotos: Photo[];
 }
 
-const photoSizes = [
-  { width: 800, height: 600 },  // 1: Sol üst
-  { width: 400, height: 1000 }, // 2: Orta üst
-  { width: 600, height: 300 },  // 3: Sağ üst
-  { width: 800, height: 800 },  // 4: Sol orta
-  { width: 400, height: 800 },  // 5: Orta
-  { width: 600, height: 500 },  // 6: Sağ orta
-  { width: 800, height: 600 },  // 7: Sol alt
-  { width: 600, height: 900 }   // 8: Sağ alt
-];
+const breakpointColumns = {
+  default: 3,
+  1536: 3,
+  1280: 3,
+  1024: 2,
+  768: 2,
+  640: 1
+};
 
-export default function PhotoGrid() {
-  const [photos, setPhotos] = useState<Photo[]>([]);
-  const [loading, setLoading] = useState(false);
+export default function PhotoGrid({ initialPhotos }: PhotoGridProps) {
+  const [photos, setPhotos] = useState<Photo[]>(initialPhotos);
   const [page, setPage] = useState(1);
-  const [error, setError] = useState<string | null>(null);
-  const observerTarget = useRef(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const observer = useRef<IntersectionObserver | null>(null);
+  const lastPhotoRef = useRef<HTMLDivElement>(null);
 
-  const breakpointColumns = {
-    default: 3,
-    1100: 3,
-    700: 2,
-    500: 1
-  };
+  const loadPhotos = useCallback(async () => {
+    if (isLoading || !hasMore) return;
 
-  const loadPhotos = async (pageNum: number) => {
     try {
-      setLoading(true);
-      setError(null);
-      
-      const result = await unsplash.photos.list({
-        page: pageNum,
-        perPage: 8
-      });
+      setIsLoading(true);
+      const response = await fetch(`/api/photos?page=${page + 1}`);
+      const data = await response.json();
 
-      if (result.type === 'success') {
-        const newPhotos = result.response.results.map((photo: UnsplashPhoto, index) => {
-          const size = photoSizes[index % photoSizes.length];
-          return {
-            id: photo.id,
-            url: photo.urls.regular,
-            title: photo.description || 'Untitled',
-            photographer: photo.user.name,
-            width: size.width,
-            height: size.height
-          };
-        });
+      if (data.results && data.results.length > 0) {
+        const newPhotos: Photo[] = data.results.map((photo: UnsplashPhoto) => ({
+          id: photo.id,
+          url: photo.urls.regular,
+          width: 800,
+          height: 600,
+          description: photo.description,
+          photographer: photo.user.name
+        }));
 
         setPhotos(prev => [...prev, ...newPhotos]);
         setPage(prev => prev + 1);
       } else {
-        setError('Fotoğraflar yüklenirken bir hata oluştu.');
+        setHasMore(false);
       }
     } catch (error) {
-      setError('Fotoğraflar yüklenirken bir hata oluştu.');
       console.error('Error loading photos:', error);
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
-  };
+  }, [page, isLoading, hasMore]);
 
   useEffect(() => {
-    loadPhotos(page);
-  }, []);
+    if (isInitialLoad) {
+      setIsInitialLoad(false);
+      return;
+    }
 
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      entries => {
-        if (entries[0].isIntersecting && !loading) {
-          loadPhotos(page);
+    observer.current = new IntersectionObserver(
+      (entries) => {
+        const lastEntry = entries[0];
+        if (lastEntry.isIntersecting && !isLoading && hasMore) {
+          loadPhotos();
         }
       },
-      { threshold: 0.1 }
+      {
+        rootMargin: '100px',
+        threshold: 0.1
+      }
     );
 
-    if (observerTarget.current) {
-      observer.observe(observerTarget.current);
+    if (lastPhotoRef.current) {
+      observer.current.observe(lastPhotoRef.current);
     }
 
-    return () => observer.disconnect();
-  }, [loading, page, loadPhotos]);
-
-  if (error) {
-    return (
-      <div className="text-center text-red-600 py-4">
-        {error}
-      </div>
-    );
-  }
+    return () => {
+      if (observer.current) {
+        observer.current.disconnect();
+      }
+    };
+  }, [isInitialLoad, isLoading, hasMore, loadPhotos]);
 
   return (
-    <>
+    <div className="container mx-auto px-4 py-8">
       <style jsx global>{`
-        .my-masonry-grid {
+        .masonry-grid {
           display: flex;
+          width: 100%;
           margin-left: -16px;
-          width: auto;
         }
-        .my-masonry-grid_column {
+        .masonry-grid_column {
           padding-left: 16px;
           background-clip: padding-box;
         }
-        .my-masonry-grid_column > div {
-          margin-bottom: 16px;
-        }
-        .photo-container {
-          position: relative;
-          background-color: #f0f0f0;
-          overflow: hidden;
-          border-radius: 8px;
-        }
-        .photo-container img {
-          display: block;
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
-          position: relative;
-          z-index: 1;
-        }
-        .photo-overlay {
-          position: absolute;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background: rgba(0, 0, 0, 0);
-          transition: background 0.3s ease;
-          z-index: 2;
-          pointer-events: none;
-        }
-        .photo-container:hover .photo-overlay {
-          background: rgba(0, 0, 0, 0.5);
-        }
-        .photo-info {
-          position: absolute;
-          bottom: 0;
-          left: 0;
-          right: 0;
-          padding: 1rem;
-          color: white;
-          opacity: 0;
-          transform: translateY(20px);
-          transition: all 0.3s ease;
-          z-index: 3;
-        }
-        .photo-container:hover .photo-info {
-          opacity: 1;
-          transform: translateY(0);
-        }
       `}</style>
+      
       <Masonry
         breakpointCols={breakpointColumns}
-        className="my-masonry-grid"
-        columnClassName="my-masonry-grid_column"
+        className="masonry-grid"
+        columnClassName="masonry-grid_column"
       >
-        {photos.map((photo) => (
+        {photos.map((photo, index) => (
           <div
             key={photo.id}
-            className="photo-container"
+            ref={index === photos.length - 1 ? lastPhotoRef : null}
+            className="relative mb-4 group"
             style={{
-              width: '100%',
-              height: 'auto',
-              aspectRatio: `${photo.width}/${photo.height}`
+              aspectRatio: `${photo.width}/${photo.height}`,
+              backgroundColor: '#f3f4f6'
             }}
           >
             <Image
               src={photo.url}
-              alt={photo.title}
-              width={photo.width}
-              height={photo.height}
-              className="w-full h-full object-cover rounded-lg"
-              priority={parseInt(photo.id) <= 4}
+              alt={photo.description || 'Photo'}
+              fill
+              className="object-cover transition-transform duration-300 group-hover:scale-105"
+              sizes="(max-width: 640px) 100vw, (max-width: 768px) 50vw, (max-width: 1024px) 33vw"
             />
-            <div className="photo-overlay" />
-            <div className="photo-info">
-              <h3 className="text-lg font-semibold">{photo.title}</h3>
-              <p className="text-sm">{photo.photographer}</p>
+            <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 transition-all duration-300 z-10">
+              <div className="absolute bottom-0 left-0 right-0 p-4 text-white transform translate-y-full group-hover:translate-y-0 transition-transform duration-300">
+                <p className="text-sm font-medium">{photo.photographer}</p>
+                {photo.description && (
+                  <p className="text-xs mt-1 line-clamp-2">{photo.description}</p>
+                )}
+              </div>
             </div>
           </div>
         ))}
       </Masonry>
-      <div ref={observerTarget} className="h-10" />
-      {loading && (
-        <div className="text-center py-4">
-          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-current border-r-transparent" />
+
+      {isLoading && (
+        <div className="flex justify-center items-center py-8">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
         </div>
       )}
-    </>
+    </div>
   );
 } 
