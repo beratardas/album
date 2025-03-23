@@ -54,14 +54,12 @@ const columnSizes = {
 
 export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] }) {
   const [photos, setPhotos] = useState<Photo[]>(initialPhotos);
-  const [visiblePhotos, setVisiblePhotos] = useState<Photo[]>([]);
   const [page, setPage] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const observer = useRef<IntersectionObserver | null>(null);
   const lastPhotoRef = useRef<HTMLDivElement | null>(null);
   const loadingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const batchSize = 9; // Her seferde 9 fotoğraf yükle (3 sütun x 3 sıra)
 
   const getColumnType = (index: number): 'left' | 'center' | 'right' => {
     const position = index % 3;
@@ -80,6 +78,7 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
     try {
       setIsLoading(true);
 
+      // Önceki timeout'u temizle
       if (loadingTimeoutRef.current) {
         clearTimeout(loadingTimeoutRef.current);
       }
@@ -102,6 +101,12 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
             height = randomSize.height;
           }
 
+          // Fotoğrafı önceden yükle
+          if (typeof window !== 'undefined') {
+            const img = new window.Image();
+            img.src = photo.urls.regular;
+          }
+
           return {
             id: photo.id,
             url: photo.urls.regular,
@@ -112,34 +117,12 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
           };
         });
 
-        // Yeni fotoğrafları yükle
-        const loadPromises = newPhotos.map(photo => {
-          return new Promise((resolve) => {
-            if (typeof window !== 'undefined') {
-              const img = new window.Image();
-              img.onload = () => resolve(true);
-              img.onerror = () => resolve(false);
-              img.src = photo.url;
-            } else {
-              resolve(true);
-            }
-          });
-        });
-
-        // Tüm fotoğraflar yüklenince göster
-        Promise.all(loadPromises).then(() => {
+        // Yeni fotoğrafları eklemeden önce kısa bir gecikme ekle
+        loadingTimeoutRef.current = setTimeout(() => {
           setPhotos(prev => [...prev, ...newPhotos]);
-          
-          // Yeni fotoğrafları grupla ve göster
-          const startIndex = Math.floor(photos.length / batchSize) * batchSize;
-          const nextBatch = [...photos, ...newPhotos].slice(startIndex, startIndex + batchSize);
-          
-          loadingTimeoutRef.current = setTimeout(() => {
-            setVisiblePhotos(prev => [...prev, ...nextBatch]);
-            setPage(prev => prev + 1);
-            setIsLoading(false);
-          }, 100);
-        });
+          setPage(prev => prev + 1);
+          setIsLoading(false);
+        }, 500);
       } else {
         setHasMore(false);
         setIsLoading(false);
@@ -148,7 +131,7 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
       console.error('Error loading photos:', error);
       setIsLoading(false);
     }
-  }, [page, isLoading, hasMore, photos, batchSize]);
+  }, [page, isLoading, hasMore, photos.length]);
 
   // Component unmount olduğunda timeout'u temizle
   useEffect(() => {
@@ -188,6 +171,17 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
     };
   }, [isLoading, hasMore, loadPhotos]);
 
+  // Fotoğrafların yüklenme önceliğini belirle
+  const getLoadPriority = (index: number): number => {
+    const columnType = getColumnType(index);
+    // Sol sütun: 1 (en yüksek öncelik)
+    // Sağ sütun: 2 (orta öncelik)
+    // Orta sütun: 3 (en düşük öncelik)
+    if (columnType === 'left') return 1;
+    if (columnType === 'right') return 2;
+    return 3;
+  };
+
   return (
     <div className="relative">
       <style jsx global>{`
@@ -209,10 +203,16 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
           transform: translateZ(0);
           transition: transform 0.3s ease;
           opacity: 0;
-          animation: fadeIn 0.3s ease forwards;
+          animation: fadeIn 0.5s ease forwards;
         }
-        .photo-container.visible {
-          opacity: 1;
+        .photo-container[data-priority="1"] {
+          animation-delay: 0s;
+        }
+        .photo-container[data-priority="2"] {
+          animation-delay: 0.2s;
+        }
+        .photo-container[data-priority="3"] {
+          animation-delay: 0.4s;
         }
         .photo-container:hover {
           transform: translateZ(0) scale(1.02);
@@ -220,7 +220,7 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
         @keyframes fadeIn {
           from {
             opacity: 0;
-            transform: translateY(10px);
+            transform: translateY(20px);
           }
           to {
             opacity: 1;
@@ -234,13 +234,15 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
         className="my-masonry-grid"
         columnClassName="my-masonry-grid_column"
       >
-        {visiblePhotos.map((photo, index) => {
+        {photos.map((photo, index) => {
           const columnType = getColumnType(index);
+          const priority = getLoadPriority(index);
           return (
             <div
               key={photo.id}
-              ref={index === visiblePhotos.length - 1 ? lastPhotoRef : null}
+              ref={index === photos.length - 1 ? lastPhotoRef : null}
               className={`photo-container group ${columnType}-column`}
+              data-priority={priority}
             >
               <div className="relative" style={{ paddingBottom: `${(photo.height / photo.width) * 100}%` }}>
                 <Image
@@ -250,6 +252,7 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
                   className="object-cover rounded-lg"
                   sizes="(max-width: 640px) 100vw, (max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw"
                   loading="eager"
+                  priority={priority === 1}
                   unoptimized
                 />
                 <div className="absolute inset-0 bg-black opacity-0 group-hover:opacity-40 transition-opacity duration-300" />
