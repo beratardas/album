@@ -78,7 +78,6 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
     try {
       setIsLoading(true);
 
-      // Önceki timeout'u temizle
       if (loadingTimeoutRef.current) {
         clearTimeout(loadingTimeoutRef.current);
       }
@@ -87,7 +86,12 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
       const data = await response.json();
 
       if (data.results && data.results.length > 0) {
-        const newPhotos: Photo[] = data.results.map((photo: UnsplashPhoto, index: number) => {
+        // Fotoğrafları sütunlara göre grupla
+        const leftPhotos: Photo[] = [];
+        const centerPhotos: Photo[] = [];
+        const rightPhotos: Photo[] = [];
+
+        data.results.forEach((photo: UnsplashPhoto, index: number) => {
           const columnType = getColumnType(photos.length + index);
           
           let width, height;
@@ -101,13 +105,7 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
             height = randomSize.height;
           }
 
-          // Fotoğrafı önceden yükle
-          if (typeof window !== 'undefined') {
-            const img = new window.Image();
-            img.src = photo.urls.regular;
-          }
-
-          return {
+          const processedPhoto = {
             id: photo.id,
             url: photo.urls.regular,
             width,
@@ -115,14 +113,44 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
             description: photo.description,
             photographer: photo.user.name
           };
+
+          // Fotoğrafı ilgili sütun grubuna ekle
+          if (columnType === 'left') {
+            leftPhotos.push(processedPhoto);
+          } else if (columnType === 'center') {
+            centerPhotos.push(processedPhoto);
+          } else {
+            rightPhotos.push(processedPhoto);
+          }
         });
 
-        // Yeni fotoğrafları eklemeden önce kısa bir gecikme ekle
+        // Tüm fotoğrafları önceden yükle
+        const preloadImages = [...leftPhotos, ...centerPhotos, ...rightPhotos].map(photo => {
+          if (typeof window !== 'undefined') {
+            const img = new window.Image();
+            img.src = photo.url;
+            return new Promise((resolve) => {
+              img.onload = () => resolve(true);
+              img.onerror = () => resolve(false);
+            });
+          }
+          return Promise.resolve(true);
+        });
+
+        // Tüm fotoğraflar yüklendiğinde state'i güncelle
+        await Promise.all(preloadImages);
+
         loadingTimeoutRef.current = setTimeout(() => {
-          setPhotos(prev => [...prev, ...newPhotos]);
+          // Sütunları sırayla ekle
+          setPhotos(prev => [
+            ...prev,
+            ...leftPhotos,
+            ...centerPhotos,
+            ...rightPhotos
+          ]);
           setPage(prev => prev + 1);
           setIsLoading(false);
-        }, 500);
+        }, 300);
       } else {
         setHasMore(false);
         setIsLoading(false);
