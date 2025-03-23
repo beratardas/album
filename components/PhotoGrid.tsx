@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
+import Masonry from 'react-masonry-css';
 import Image from 'next/image';
 
 interface Photo {
@@ -27,25 +28,24 @@ interface UnsplashPhoto {
   };
 }
 
-const photoSizes = [
-  { width: 600, height: 400 },  // 1: Sol üst
-  { width: 300, height: 600 },  // 2: Orta üst
-  { width: 300, height: 300 },  // 3: Sağ üst 1
-  { width: 300, height: 300 },  // 4: Sağ üst 2
-  { width: 600, height: 600 },  // 5: Sol alt
-  { width: 300, height: 300 },  // 6: Sağ orta 1
-  { width: 300, height: 600 },  // 7: Orta alt
-  { width: 300, height: 300 },  // 8: Sağ alt
-];
+const breakpointColumns = {
+  default: 4,
+  1536: 4,
+  1280: 3,
+  1024: 3,
+  768: 2,
+  640: 1
+};
+
+const MAX_HEIGHT = 800; // Maksimum foto yüksekliği
 
 export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] }) {
   const [photos, setPhotos] = useState<Photo[]>(initialPhotos);
   const [page, setPage] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
-  const [isInitialLoad, setIsInitialLoad] = useState(true);
   const observer = useRef<IntersectionObserver | null>(null);
-  const lastPhotoRef = useRef<HTMLDivElement>(null);
+  const lastPhotoRef = useRef<HTMLDivElement | null>(null);
 
   const loadPhotos = useCallback(async () => {
     if (isLoading || !hasMore) return;
@@ -56,13 +56,33 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
       const data = await response.json();
 
       if (data.results && data.results.length > 0) {
-        const newPhotos: Photo[] = data.results.map((photo: UnsplashPhoto, index: number) => {
-          const size = photoSizes[index % photoSizes.length];
+        const newPhotos: Photo[] = data.results.map((photo: UnsplashPhoto) => {
+          // Orijinal en-boy oranını koru ama yüksekliği sınırla
+          let width = 400;
+          let height = 300;
+          
+          // Eğer orijinal foto varsa ve boyutları mevcutsa
+          if (photo.urls.regular) {
+            const img = new window.Image();
+            img.src = photo.urls.regular;
+            const imgElement = document.createElement('img');
+            imgElement.src = photo.urls.regular;
+            
+            if (imgElement.naturalHeight > MAX_HEIGHT) {
+              const ratio = MAX_HEIGHT / imgElement.naturalHeight;
+              height = MAX_HEIGHT;
+              width = Math.floor(imgElement.naturalWidth * ratio);
+            } else if (imgElement.naturalHeight > 0) {
+              height = imgElement.naturalHeight;
+              width = imgElement.naturalWidth;
+            }
+          }
+
           return {
             id: photo.id,
             url: photo.urls.regular,
-            width: size.width,
-            height: size.height,
+            width,
+            height,
             description: photo.description,
             photographer: photo.user.name
           };
@@ -81,11 +101,6 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
   }, [page, isLoading, hasMore]);
 
   useEffect(() => {
-    if (isInitialLoad) {
-      setIsInitialLoad(false);
-      return;
-    }
-
     observer.current = new IntersectionObserver(
       (entries) => {
         const lastEntry = entries[0];
@@ -94,7 +109,7 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
         }
       },
       {
-        rootMargin: '100px',
+        rootMargin: '200px',
         threshold: 0.1
       }
     );
@@ -108,76 +123,74 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
         observer.current.disconnect();
       }
     };
-  }, [isInitialLoad, isLoading, hasMore, loadPhotos]);
+  }, [isLoading, hasMore, loadPhotos]);
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="grid grid-cols-12 gap-4">
-        {photos.map((photo, index) => {
-          const position = index % 8;
-          let className = "relative group overflow-hidden ";
-          
-          // Her fotoğraf için grid pozisyonunu ayarla
-          switch (position) {
-            case 0: // 1
-              className += "col-span-6 row-span-4";
-              break;
-            case 1: // 2
-              className += "col-span-3 row-span-6";
-              break;
-            case 2: // 3
-              className += "col-span-3 row-span-3";
-              break;
-            case 3: // 4
-              className += "col-span-3 row-span-3";
-              break;
-            case 4: // 5
-              className += "col-span-6 row-span-6";
-              break;
-            case 5: // 6
-              className += "col-span-3 row-span-3";
-              break;
-            case 6: // 7
-              className += "col-span-3 row-span-6";
-              break;
-            case 7: // 8
-              className += "col-span-3 row-span-3";
-              break;
-          }
+    <div className="relative">
+      <style jsx global>{`
+        .my-masonry-grid {
+          display: flex;
+          width: auto;
+          margin-left: -16px;
+        }
+        .my-masonry-grid_column {
+          padding-left: 16px;
+          background-clip: padding-box;
+        }
+        .photo-container {
+          margin-bottom: 16px;
+          break-inside: avoid;
+          position: relative;
+          border-radius: 12px;
+          overflow: hidden;
+          transform: translateZ(0);
+          transition: transform 0.3s ease;
+        }
+        .photo-container:hover {
+          transform: translateZ(0) scale(1.02);
+        }
+      `}</style>
 
-          return (
-            <div
-              key={photo.id}
-              ref={index === photos.length - 1 ? lastPhotoRef : null}
-              className={className}
-              style={{
-                aspectRatio: `${photo.width}/${photo.height}`,
-                backgroundColor: '#f3f4f6'
-              }}
-            >
+      <Masonry
+        breakpointCols={breakpointColumns}
+        className="my-masonry-grid"
+        columnClassName="my-masonry-grid_column"
+      >
+        {photos.map((photo, index) => (
+          <div
+            key={photo.id}
+            ref={index === photos.length - 1 ? lastPhotoRef : null}
+            className="photo-container group"
+          >
+            <div className="relative" style={{ paddingBottom: `${(photo.height / photo.width) * 100}%` }}>
               <Image
                 src={photo.url}
                 alt={photo.description || 'Photo'}
                 fill
-                className="object-cover transition-transform duration-300 group-hover:scale-105"
-                sizes="(max-width: 640px) 100vw, (max-width: 768px) 50vw, (max-width: 1024px) 33vw"
+                className="object-cover rounded-lg"
+                sizes="(max-width: 640px) 100vw, (max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw"
+                priority={index < 4}
               />
-              <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 transition-all duration-300 z-10">
-                <div className="absolute bottom-0 left-0 right-0 p-4 text-white transform translate-y-full group-hover:translate-y-0 transition-transform duration-300">
-                  <p className="text-sm font-medium">{photo.photographer}</p>
-                  {photo.description && (
-                    <p className="text-xs mt-1 line-clamp-2">{photo.description}</p>
-                  )}
-                </div>
+              <div className="absolute inset-0 bg-black opacity-0 group-hover:opacity-40 transition-opacity duration-300" />
+              <div className="absolute bottom-0 left-0 right-0 p-4 text-white transform translate-y-full group-hover:translate-y-0 transition-transform duration-300">
+                <p className="text-sm font-medium truncate">{photo.photographer}</p>
+                {photo.description && (
+                  <p className="text-xs mt-1 line-clamp-2 opacity-90">{photo.description}</p>
+                )}
               </div>
             </div>
-          );
-        })}
-      </div>
+          </div>
+        ))}
+      </Masonry>
 
       {isLoading && (
-        <div className="flex justify-center items-center py-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+        <div className="fixed bottom-8 left-1/2 transform -translate-x-1/2 z-50">
+          <div className="bg-white/80 backdrop-blur-sm px-6 py-3 rounded-full shadow-lg">
+            <div className="flex items-center space-x-2">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-black"></div>
+              <span className="text-sm font-medium text-gray-800">Yükleniyor...</span>
+            </div>
+          </div>
         </div>
       )}
     </div>
