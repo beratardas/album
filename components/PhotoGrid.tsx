@@ -127,12 +127,6 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
             height = randomSize.height;
           }
 
-          // Fotoğrafı önceden yükle
-          if (typeof window !== 'undefined') {
-            const img = new window.Image();
-            img.src = photo.urls.regular;
-          }
-
           return {
             id: photo.id,
             url: photo.urls.regular,
@@ -175,12 +169,13 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
   }, [loadPhotos]);
 
   return (
-    <div className="relative">
+    <div className="relative min-h-screen bg-white">
       <style jsx global>{`
         .my-masonry-grid {
           display: flex;
           width: auto;
           margin-left: -16px;
+          padding: 16px;
         }
         .my-masonry-grid_column {
           padding-left: 16px;
@@ -194,21 +189,13 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
           overflow: hidden;
           transform: translateZ(0);
           transition: transform 0.3s ease;
-          opacity: 0;
-          animation: fadeIn 0.5s ease forwards;
+          background-color: #f3f4f6;
         }
         .photo-container:hover {
           transform: translateZ(0) scale(1.02);
         }
-        @keyframes fadeIn {
-          from {
-            opacity: 0;
-            transform: translateY(20px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
+        .photo-container img {
+          opacity: 1 !important;
         }
       `}</style>
 
@@ -234,6 +221,7 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
                   sizes="(max-width: 640px) 100vw, (max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw"
                   loading="eager"
                   unoptimized
+                  priority={index < 6}
                 />
                 <div className="absolute inset-0 bg-black opacity-0 group-hover:opacity-40 transition-opacity duration-300" />
                 <div className="absolute bottom-0 left-0 right-0 p-4 text-white transform translate-y-full group-hover:translate-y-0 transition-transform duration-300">
