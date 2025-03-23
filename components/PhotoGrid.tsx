@@ -54,12 +54,14 @@ const columnSizes = {
 
 export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] }) {
   const [photos, setPhotos] = useState<Photo[]>(initialPhotos);
+  const [visiblePhotos, setVisiblePhotos] = useState<Photo[]>([]);
   const [page, setPage] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const observer = useRef<IntersectionObserver | null>(null);
   const lastPhotoRef = useRef<HTMLDivElement | null>(null);
   const loadingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const batchSize = 9; // Her seferde 9 fotoğraf yükle (3 sütun x 3 sıra)
 
   const getColumnType = (index: number): 'left' | 'center' | 'right' => {
     const position = index % 3;
@@ -78,7 +80,6 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
     try {
       setIsLoading(true);
 
-      // Önceki timeout'u temizle
       if (loadingTimeoutRef.current) {
         clearTimeout(loadingTimeoutRef.current);
       }
@@ -87,11 +88,7 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
       const data = await response.json();
 
       if (data.results && data.results.length > 0) {
-        // Önce fotoğrafları sütunlara göre ayır
-        const sidePhotos: Photo[] = [];
-        const centerPhotos: Photo[] = [];
-
-        data.results.forEach((photo: UnsplashPhoto, index: number) => {
+        const newPhotos: Photo[] = data.results.map((photo: UnsplashPhoto, index: number) => {
           const columnType = getColumnType(photos.length + index);
           
           let width, height;
@@ -105,13 +102,7 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
             height = randomSize.height;
           }
 
-          // Fotoğrafı önceden yükle
-          if (typeof window !== 'undefined') {
-            const img = new window.Image();
-            img.src = photo.urls.regular;
-          }
-
-          const newPhoto = {
+          return {
             id: photo.id,
             url: photo.urls.regular,
             width,
@@ -119,27 +110,36 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
             description: photo.description,
             photographer: photo.user.name
           };
-
-          // Orta sütun fotoğraflarını ayrı diziye ekle
-          if (columnType === 'center') {
-            centerPhotos.push(newPhoto);
-          } else {
-            sidePhotos.push(newPhoto);
-          }
         });
 
-        // Önce yan sütunları yükle
-        loadingTimeoutRef.current = setTimeout(() => {
-          setPhotos(prev => [...prev, ...sidePhotos]);
+        // Yeni fotoğrafları yükle
+        const loadPromises = newPhotos.map(photo => {
+          return new Promise((resolve) => {
+            if (typeof window !== 'undefined') {
+              const img = new window.Image();
+              img.onload = () => resolve(true);
+              img.onerror = () => resolve(false);
+              img.src = photo.url;
+            } else {
+              resolve(true);
+            }
+          });
+        });
+
+        // Tüm fotoğraflar yüklenince göster
+        Promise.all(loadPromises).then(() => {
+          setPhotos(prev => [...prev, ...newPhotos]);
           
-          // Sonra orta sütunu yükle (300ms gecikme ile)
-          setTimeout(() => {
-            setPhotos(prev => [...prev, ...centerPhotos]);
+          // Yeni fotoğrafları grupla ve göster
+          const startIndex = Math.floor(photos.length / batchSize) * batchSize;
+          const nextBatch = [...photos, ...newPhotos].slice(startIndex, startIndex + batchSize);
+          
+          loadingTimeoutRef.current = setTimeout(() => {
+            setVisiblePhotos(prev => [...prev, ...nextBatch]);
             setPage(prev => prev + 1);
             setIsLoading(false);
-          }, 300);
-        }, 200);
-
+          }, 100);
+        });
       } else {
         setHasMore(false);
         setIsLoading(false);
@@ -148,7 +148,7 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
       console.error('Error loading photos:', error);
       setIsLoading(false);
     }
-  }, [page, isLoading, hasMore, photos.length]);
+  }, [page, isLoading, hasMore, photos, batchSize]);
 
   // Component unmount olduğunda timeout'u temizle
   useEffect(() => {
@@ -209,7 +209,10 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
           transform: translateZ(0);
           transition: transform 0.3s ease;
           opacity: 0;
-          animation: fadeIn 0.5s ease forwards;
+          animation: fadeIn 0.3s ease forwards;
+        }
+        .photo-container.visible {
+          opacity: 1;
         }
         .photo-container:hover {
           transform: translateZ(0) scale(1.02);
@@ -217,7 +220,7 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
         @keyframes fadeIn {
           from {
             opacity: 0;
-            transform: translateY(20px);
+            transform: translateY(10px);
           }
           to {
             opacity: 1;
@@ -231,12 +234,12 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
         className="my-masonry-grid"
         columnClassName="my-masonry-grid_column"
       >
-        {photos.map((photo, index) => {
+        {visiblePhotos.map((photo, index) => {
           const columnType = getColumnType(index);
           return (
             <div
               key={photo.id}
-              ref={index === photos.length - 1 ? lastPhotoRef : null}
+              ref={index === visiblePhotos.length - 1 ? lastPhotoRef : null}
               className={`photo-container group ${columnType}-column`}
             >
               <div className="relative" style={{ paddingBottom: `${(photo.height / photo.width) * 100}%` }}>
