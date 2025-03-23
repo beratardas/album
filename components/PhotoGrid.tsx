@@ -27,23 +27,13 @@ interface UnsplashPhoto {
   };
 }
 
-const breakpointColumns = {
-  default: 3,
-  1536: 3,
-  1280: 3,
-  1024: 2,
-  768: 2,
-  640: 1
-};
-
-// Her sütun için farklı boyut ayarları
 const columnSizes = {
   left: [
     { width: 400, height: 300 },
     { width: 500, height: 400 },
     { width: 600, height: 400 }
   ],
-  center: { width: 400, maxHeight: 600 }, // Orta sütun boyutlarını artırdım
+  center: { width: 400, maxHeight: 600 },
   right: [
     { width: 400, height: 300 },
     { width: 500, height: 400 },
@@ -61,19 +51,11 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
   const lastCenterRef = useRef<HTMLDivElement | null>(null);
   const lastRightRef = useRef<HTMLDivElement | null>(null);
 
-  // Başlangıç fotoğraflarını yükle
   useEffect(() => {
-    if (initialPhotos && initialPhotos.length > 0) {
+    if (initialPhotos.length > 0) {
       setPhotos(initialPhotos);
     }
-  }, []);
-
-  // İlk yüklemede fotoğrafları getir
-  useEffect(() => {
-    if (photos.length === 0) {
-      loadPhotos();
-    }
-  }, []);
+  }, [initialPhotos]);
 
   const getColumnType = (index: number): 'left' | 'center' | 'right' => {
     const position = index % 3;
@@ -132,7 +114,6 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
     }
   }, [page, isLoading, hasMore, photos.length]);
 
-  // Infinite scroll için observer
   useEffect(() => {
     observer.current = new IntersectionObserver(
       (entries) => {
@@ -147,7 +128,6 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
       }
     );
 
-    // Her sütunun son fotoğrafını gözlemle
     if (lastLeftRef.current) observer.current.observe(lastLeftRef.current);
     if (lastCenterRef.current) observer.current.observe(lastCenterRef.current);
     if (lastRightRef.current) observer.current.observe(lastRightRef.current);
