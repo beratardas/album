@@ -76,7 +76,7 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
           const imgElement = document.createElement('img');
           imgElement.src = photo.urls.regular;
           
-          let width = sizes.width;
+          const width = sizes.width;
           let height = sizes.maxHeight;
 
           if (imgElement.naturalWidth && imgElement.naturalHeight) {
