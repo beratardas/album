@@ -29,15 +29,20 @@ interface UnsplashPhoto {
 }
 
 const breakpointColumns = {
-  default: 4,
-  1536: 4,
+  default: 3,
+  1536: 3,
   1280: 3,
-  1024: 3,
+  1024: 2,
   768: 2,
   640: 1
 };
 
-const MAX_HEIGHT = 800; // Maksimum foto yüksekliği
+// Her sütun için farklı boyut ayarları
+const columnSizes = {
+  left: { width: 400, maxHeight: 600 },    // Sol sütun - normal boyutlar
+  center: { width: 300, maxHeight: 800 },   // Orta sütun - ince uzun
+  right: { width: 400, maxHeight: 600 }     // Sağ sütun - normal boyutlar
+};
 
 export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] }) {
   const [photos, setPhotos] = useState<Photo[]>(initialPhotos);
@@ -46,6 +51,13 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
   const [hasMore, setHasMore] = useState(true);
   const observer = useRef<IntersectionObserver | null>(null);
   const lastPhotoRef = useRef<HTMLDivElement | null>(null);
+
+  const getColumnType = (index: number): 'left' | 'center' | 'right' => {
+    const position = index % 3;
+    if (position === 0) return 'left';
+    if (position === 1) return 'center';
+    return 'right';
+  };
 
   const loadPhotos = useCallback(async () => {
     if (isLoading || !hasMore) return;
@@ -56,25 +68,26 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
       const data = await response.json();
 
       if (data.results && data.results.length > 0) {
-        const newPhotos: Photo[] = data.results.map((photo: UnsplashPhoto) => {
-          // Orijinal en-boy oranını koru ama yüksekliği sınırla
-          let width = 400;
-          let height = 300;
+        const newPhotos: Photo[] = data.results.map((photo: UnsplashPhoto, index: number) => {
+          const columnType = getColumnType(index);
+          const sizes = columnSizes[columnType];
           
-          // Eğer orijinal foto varsa ve boyutları mevcutsa
-          if (photo.urls.regular) {
-            const img = new window.Image();
-            img.src = photo.urls.regular;
-            const imgElement = document.createElement('img');
-            imgElement.src = photo.urls.regular;
+          // Orijinal en-boy oranını hesapla
+          const imgElement = document.createElement('img');
+          imgElement.src = photo.urls.regular;
+          
+          let width = sizes.width;
+          let height = sizes.maxHeight;
+
+          if (imgElement.naturalWidth && imgElement.naturalHeight) {
+            const originalRatio = imgElement.naturalHeight / imgElement.naturalWidth;
             
-            if (imgElement.naturalHeight > MAX_HEIGHT) {
-              const ratio = MAX_HEIGHT / imgElement.naturalHeight;
-              height = MAX_HEIGHT;
-              width = Math.floor(imgElement.naturalWidth * ratio);
-            } else if (imgElement.naturalHeight > 0) {
-              height = imgElement.naturalHeight;
-              width = imgElement.naturalWidth;
+            if (columnType === 'center') {
+              // Orta sütun için ince uzun format
+              height = Math.min(sizes.maxHeight, width * 2);
+            } else {
+              // Diğer sütunlar için orijinal oranı koru ama maxHeight'ı geçme
+              height = Math.min(sizes.maxHeight, width * originalRatio);
             }
           }
 
@@ -149,6 +162,9 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
         .photo-container:hover {
           transform: translateZ(0) scale(1.02);
         }
+        .photo-container.center-column {
+          max-height: 800px;
+        }
       `}</style>
 
       <Masonry
@@ -156,31 +172,34 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
         className="my-masonry-grid"
         columnClassName="my-masonry-grid_column"
       >
-        {photos.map((photo, index) => (
-          <div
-            key={photo.id}
-            ref={index === photos.length - 1 ? lastPhotoRef : null}
-            className="photo-container group"
-          >
-            <div className="relative" style={{ paddingBottom: `${(photo.height / photo.width) * 100}%` }}>
-              <Image
-                src={photo.url}
-                alt={photo.description || 'Photo'}
-                fill
-                className="object-cover rounded-lg"
-                sizes="(max-width: 640px) 100vw, (max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw"
-                priority={index < 4}
-              />
-              <div className="absolute inset-0 bg-black opacity-0 group-hover:opacity-40 transition-opacity duration-300" />
-              <div className="absolute bottom-0 left-0 right-0 p-4 text-white transform translate-y-full group-hover:translate-y-0 transition-transform duration-300">
-                <p className="text-sm font-medium truncate">{photo.photographer}</p>
-                {photo.description && (
-                  <p className="text-xs mt-1 line-clamp-2 opacity-90">{photo.description}</p>
-                )}
+        {photos.map((photo, index) => {
+          const columnType = getColumnType(index);
+          return (
+            <div
+              key={photo.id}
+              ref={index === photos.length - 1 ? lastPhotoRef : null}
+              className={`photo-container group ${columnType}-column`}
+            >
+              <div className="relative" style={{ paddingBottom: `${(photo.height / photo.width) * 100}%` }}>
+                <Image
+                  src={photo.url}
+                  alt={photo.description || 'Photo'}
+                  fill
+                  className="object-cover rounded-lg"
+                  sizes="(max-width: 640px) 100vw, (max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw"
+                  priority={index < 4}
+                />
+                <div className="absolute inset-0 bg-black opacity-0 group-hover:opacity-40 transition-opacity duration-300" />
+                <div className="absolute bottom-0 left-0 right-0 p-4 text-white transform translate-y-full group-hover:translate-y-0 transition-transform duration-300">
+                  <p className="text-sm font-medium truncate">{photo.photographer}</p>
+                  {photo.description && (
+                    <p className="text-xs mt-1 line-clamp-2 opacity-90">{photo.description}</p>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </Masonry>
 
       {isLoading && (
