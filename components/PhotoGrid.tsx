@@ -102,8 +102,10 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
           }
 
           // Fotoğrafı önceden yükle
-          const img = new Image();
-          img.src = photo.urls.regular;
+          if (typeof window !== 'undefined') {
+            const img = new window.Image();
+            img.src = photo.urls.regular;
+          }
 
           return {
             id: photo.id,
