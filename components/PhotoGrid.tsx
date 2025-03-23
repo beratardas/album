@@ -46,7 +46,7 @@ const columnSizes = {
 
 export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] }) {
   const [photos, setPhotos] = useState<Photo[]>(initialPhotos);
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const observer = useRef<IntersectionObserver | null>(null);
@@ -69,7 +69,7 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
 
       if (data.results && data.results.length > 0) {
         const newPhotos: Photo[] = data.results.map((photo: UnsplashPhoto, index: number) => {
-          const columnType = getColumnType(index);
+          const columnType = getColumnType(photos.length + index);
           const sizes = columnSizes[columnType];
           
           // Orijinal en-boy oranını hesapla
@@ -111,7 +111,11 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
     } finally {
       setIsLoading(false);
     }
-  }, [page, isLoading, hasMore]);
+  }, [page, isLoading, hasMore, photos.length]);
+
+  useEffect(() => {
+    loadPhotos();
+  }, []);
 
   useEffect(() => {
     observer.current = new IntersectionObserver(
