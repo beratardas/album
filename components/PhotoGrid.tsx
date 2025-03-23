@@ -39,9 +39,17 @@ const breakpointColumns = {
 
 // Her sütun için farklı boyut ayarları
 const columnSizes = {
-  left: { width: 400, maxHeight: 600 },    // Sol sütun - normal boyutlar
-  center: { width: 300, maxHeight: 800 },   // Orta sütun - ince uzun
-  right: { width: 400, maxHeight: 600 }     // Sağ sütun - normal boyutlar
+  left: [
+    { width: 400, height: 300 },
+    { width: 500, height: 400 },
+    { width: 600, height: 400 }
+  ],
+  center: { width: 300, maxHeight: 600 }, // Orta sütun - ince uzun ama daha kısa
+  right: [
+    { width: 400, height: 300 },
+    { width: 500, height: 400 },
+    { width: 600, height: 400 }
+  ]
 };
 
 export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] }) {
@@ -59,6 +67,10 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
     return 'right';
   };
 
+  const getRandomSize = (sizes: Array<{ width: number; height: number }>) => {
+    return sizes[Math.floor(Math.random() * sizes.length)];
+  };
+
   const loadPhotos = useCallback(async () => {
     if (isLoading || !hasMore) return;
 
@@ -70,25 +82,16 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
       if (data.results && data.results.length > 0) {
         const newPhotos: Photo[] = data.results.map((photo: UnsplashPhoto, index: number) => {
           const columnType = getColumnType(photos.length + index);
-          const sizes = columnSizes[columnType];
           
-          // Orijinal en-boy oranını hesapla
-          const imgElement = document.createElement('img');
-          imgElement.src = photo.urls.regular;
+          let width, height;
           
-          const width = sizes.width;
-          let height = sizes.maxHeight;
-
-          if (imgElement.naturalWidth && imgElement.naturalHeight) {
-            const originalRatio = imgElement.naturalHeight / imgElement.naturalWidth;
-            
-            if (columnType === 'center') {
-              // Orta sütun için ince uzun format
-              height = Math.min(sizes.maxHeight, width * 2);
-            } else {
-              // Diğer sütunlar için orijinal oranı koru ama maxHeight'ı geçme
-              height = Math.min(sizes.maxHeight, width * originalRatio);
-            }
+          if (columnType === 'center') {
+            width = columnSizes.center.width;
+            height = columnSizes.center.maxHeight;
+          } else {
+            const randomSize = getRandomSize(columnSizes[columnType]);
+            width = randomSize.width;
+            height = randomSize.height;
           }
 
           return {
