@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
-import Masonry from 'react-masonry-css';
 import Image from 'next/image';
 
 interface Photo {
