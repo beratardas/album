@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, forwardRef } from 'react';
 import Masonry from 'react-masonry-css';
 import Image from 'next/image';
 
@@ -52,11 +52,39 @@ const columnSizes = {
   ]
 };
 
+const PhotoItem = forwardRef<HTMLDivElement, { photo: Photo }>(({ photo }, ref) => (
+  <div
+    ref={ref}
+    className="relative group rounded-lg overflow-hidden"
+    style={{ paddingBottom: `${(photo.height / photo.width) * 100}%` }}
+  >
+    <Image
+      src={photo.url}
+      alt={photo.description || 'Photo'}
+      fill
+      className="object-cover"
+      sizes="(max-width: 640px) 100vw, (max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw"
+      loading="eager"
+      unoptimized
+    />
+    <div className="absolute inset-0 bg-black opacity-0 group-hover:opacity-40 transition-opacity duration-300" />
+    <div className="absolute bottom-0 left-0 right-0 p-4 text-white transform translate-y-full group-hover:translate-y-0 transition-transform duration-300">
+      <p className="text-sm font-medium truncate">{photo.photographer}</p>
+      {photo.description && (
+        <p className="text-xs mt-1 line-clamp-2 opacity-90">{photo.description}</p>
+      )}
+    </div>
+  </div>
+));
+
+PhotoItem.displayName = 'PhotoItem';
+
 export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] }) {
   const [photos, setPhotos] = useState<Photo[]>(initialPhotos);
   const [page, setPage] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
+  const [visiblePhotos, setVisiblePhotos] = useState<number>(12); // Başlangıçta gösterilecek fotoğraf sayısı
   const observer = useRef<IntersectionObserver | null>(null);
   const lastPhotoRef = useRef<HTMLDivElement | null>(null);
   const loadingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -86,12 +114,7 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
       const data = await response.json();
 
       if (data.results && data.results.length > 0) {
-        // Fotoğrafları sütunlara göre grupla
-        const leftPhotos: Photo[] = [];
-        const centerPhotos: Photo[] = [];
-        const rightPhotos: Photo[] = [];
-
-        data.results.forEach((photo: UnsplashPhoto, index: number) => {
+        const newPhotos: Photo[] = data.results.map((photo: UnsplashPhoto, index: number) => {
           const columnType = getColumnType(photos.length + index);
           
           let width, height;
@@ -105,7 +128,13 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
             height = randomSize.height;
           }
 
-          const processedPhoto = {
+          // Fotoğrafı önceden yükle
+          if (typeof window !== 'undefined') {
+            const img = new window.Image();
+            img.src = photo.urls.regular;
+          }
+
+          return {
             id: photo.id,
             url: photo.urls.regular,
             width,
@@ -113,44 +142,12 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
             description: photo.description,
             photographer: photo.user.name
           };
-
-          // Fotoğrafı ilgili sütun grubuna ekle
-          if (columnType === 'left') {
-            leftPhotos.push(processedPhoto);
-          } else if (columnType === 'center') {
-            centerPhotos.push(processedPhoto);
-          } else {
-            rightPhotos.push(processedPhoto);
-          }
         });
 
-        // Tüm fotoğrafları önceden yükle
-        const preloadImages = [...leftPhotos, ...centerPhotos, ...rightPhotos].map(photo => {
-          if (typeof window !== 'undefined') {
-            const img = new window.Image();
-            img.src = photo.url;
-            return new Promise((resolve) => {
-              img.onload = () => resolve(true);
-              img.onerror = () => resolve(false);
-            });
-          }
-          return Promise.resolve(true);
-        });
-
-        // Tüm fotoğraflar yüklendiğinde state'i güncelle
-        await Promise.all(preloadImages);
-
-        loadingTimeoutRef.current = setTimeout(() => {
-          // Sütunları sırayla ekle
-          setPhotos(prev => [
-            ...prev,
-            ...leftPhotos,
-            ...centerPhotos,
-            ...rightPhotos
-          ]);
-          setPage(prev => prev + 1);
-          setIsLoading(false);
-        }, 300);
+        // Yeni fotoğrafları ekle
+        setPhotos(prev => [...prev, ...newPhotos]);
+        setPage(prev => prev + 1);
+        setIsLoading(false);
       } else {
         setHasMore(false);
         setIsLoading(false);
@@ -161,18 +158,22 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
     }
   }, [page, isLoading, hasMore, photos.length]);
 
-  // Component unmount olduğunda timeout'u temizle
+  // Scroll olayını dinle
   useEffect(() => {
-    return () => {
-      if (loadingTimeoutRef.current) {
-        clearTimeout(loadingTimeoutRef.current);
+    const handleScroll = () => {
+      const scrollPosition = window.scrollY + window.innerHeight;
+      const documentHeight = document.documentElement.scrollHeight;
+      const scrollThreshold = 200; // Sayfanın sonuna ne kadar yaklaşıldığında yeni fotoğraflar yükleneceği
+
+      if (documentHeight - scrollPosition < scrollThreshold) {
+        setVisiblePhotos(prev => prev + 8); // Her scroll'da 8 fotoğraf daha göster
+        loadPhotos();
       }
     };
-  }, []);
 
-  useEffect(() => {
-    loadPhotos();
-  }, []);
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [loadPhotos]);
 
   useEffect(() => {
     observer.current = new IntersectionObserver(
@@ -200,87 +201,54 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
   }, [isLoading, hasMore, loadPhotos]);
 
   return (
-    <div className="relative">
-      <style jsx global>{`
-        .my-masonry-grid {
-          display: flex;
-          width: auto;
-          margin-left: -16px;
-        }
-        .my-masonry-grid_column {
-          padding-left: 16px;
-          background-clip: padding-box;
-        }
-        .photo-container {
-          margin-bottom: 16px;
-          break-inside: avoid;
-          position: relative;
-          border-radius: 12px;
-          overflow: hidden;
-          transform: translateZ(0);
-          transition: transform 0.3s ease;
-          opacity: 0;
-          animation: fadeIn 0.5s ease forwards;
-        }
-        .photo-container:hover {
-          transform: translateZ(0) scale(1.02);
-        }
-        @keyframes fadeIn {
-          from {
-            opacity: 0;
-            transform: translateY(20px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-      `}</style>
+    <div className="container mx-auto px-4 py-8">
+      <div className="grid grid-cols-12 gap-4">
+        {/* Sol Sütun */}
+        <div className="col-span-3 space-y-4">
+          {photos
+            .filter((_, index) => getColumnType(index) === 'left')
+            .slice(0, Math.ceil(visiblePhotos / 3))
+            .map((photo, index) => (
+              <PhotoItem
+                key={photo.id}
+                photo={photo}
+                ref={index === Math.ceil(visiblePhotos / 3) - 1 ? lastPhotoRef : null}
+              />
+            ))}
+        </div>
 
-      <Masonry
-        breakpointCols={breakpointColumns}
-        className="my-masonry-grid"
-        columnClassName="my-masonry-grid_column"
-      >
-        {photos.map((photo, index) => {
-          const columnType = getColumnType(index);
-          return (
-            <div
-              key={photo.id}
-              ref={index === photos.length - 1 ? lastPhotoRef : null}
-              className={`photo-container group ${columnType}-column`}
-            >
-              <div className="relative" style={{ paddingBottom: `${(photo.height / photo.width) * 100}%` }}>
-                <Image
-                  src={photo.url}
-                  alt={photo.description || 'Photo'}
-                  fill
-                  className="object-cover rounded-lg"
-                  sizes="(max-width: 640px) 100vw, (max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw"
-                  loading="eager"
-                  unoptimized
-                />
-                <div className="absolute inset-0 bg-black opacity-0 group-hover:opacity-40 transition-opacity duration-300" />
-                <div className="absolute bottom-0 left-0 right-0 p-4 text-white transform translate-y-full group-hover:translate-y-0 transition-transform duration-300">
-                  <p className="text-sm font-medium truncate">{photo.photographer}</p>
-                  {photo.description && (
-                    <p className="text-xs mt-1 line-clamp-2 opacity-90">{photo.description}</p>
-                  )}
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </Masonry>
+        {/* Orta Sütun */}
+        <div className="col-span-6 space-y-4">
+          {photos
+            .filter((_, index) => getColumnType(index) === 'center')
+            .slice(0, Math.ceil(visiblePhotos / 2))
+            .map((photo, index) => (
+              <PhotoItem
+                key={photo.id}
+                photo={photo}
+                ref={index === Math.ceil(visiblePhotos / 2) - 1 ? lastPhotoRef : null}
+              />
+            ))}
+        </div>
+
+        {/* Sağ Sütun */}
+        <div className="col-span-3 space-y-4">
+          {photos
+            .filter((_, index) => getColumnType(index) === 'right')
+            .slice(0, Math.ceil(visiblePhotos / 3))
+            .map((photo, index) => (
+              <PhotoItem
+                key={photo.id}
+                photo={photo}
+                ref={index === Math.ceil(visiblePhotos / 3) - 1 ? lastPhotoRef : null}
+              />
+            ))}
+        </div>
+      </div>
 
       {isLoading && (
-        <div className="fixed bottom-8 left-1/2 transform -translate-x-1/2 z-50">
-          <div className="bg-white/80 backdrop-blur-sm px-6 py-3 rounded-full shadow-lg">
-            <div className="flex items-center space-x-2">
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-black"></div>
-              <span className="text-sm font-medium text-gray-800">Yükleniyor...</span>
-            </div>
-          </div>
+        <div className="flex justify-center mt-8">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-gray-900"></div>
         </div>
       )}
     </div>
