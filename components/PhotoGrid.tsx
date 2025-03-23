@@ -85,7 +85,6 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
   const [isLoading, setIsLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [visiblePhotos, setVisiblePhotos] = useState<number>(12);
-  const observer = useRef<IntersectionObserver | null>(null);
   const lastPhotoRef = useRef<HTMLDivElement | null>(null);
   const loadingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -261,4 +260,4 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
       )}
     </div>
   );
-} 
+}
