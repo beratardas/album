@@ -27,14 +27,7 @@ interface UnsplashPhoto {
   };
 }
 
-const breakpointColumns = {
-  default: 3,
-  1536: 3,
-  1280: 3,
-  1024: 2,
-  768: 2,
-  640: 1
-};
+
 
 // Her sütun için farklı boyut ayarları
 const columnSizes = {
