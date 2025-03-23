@@ -44,7 +44,7 @@ const columnSizes = {
     { width: 500, height: 400 },
     { width: 600, height: 400 }
   ],
-  center: { width: 300, maxHeight: 600 }, // Orta sütun - ince uzun ama daha kısa
+  center: { width: 300, maxHeight: 500 }, // Orta sütun - ince uzun ama daha kısa
   right: [
     { width: 400, height: 300 },
     { width: 500, height: 400 },
@@ -87,7 +87,11 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
       const data = await response.json();
 
       if (data.results && data.results.length > 0) {
-        const newPhotos: Photo[] = data.results.map((photo: UnsplashPhoto, index: number) => {
+        // Önce fotoğrafları sütunlara göre ayır
+        const sidePhotos: Photo[] = [];
+        const centerPhotos: Photo[] = [];
+
+        data.results.forEach((photo: UnsplashPhoto, index: number) => {
           const columnType = getColumnType(photos.length + index);
           
           let width, height;
@@ -107,7 +111,7 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
             img.src = photo.urls.regular;
           }
 
-          return {
+          const newPhoto = {
             id: photo.id,
             url: photo.urls.regular,
             width,
@@ -115,14 +119,27 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
             description: photo.description,
             photographer: photo.user.name
           };
+
+          // Orta sütun fotoğraflarını ayrı diziye ekle
+          if (columnType === 'center') {
+            centerPhotos.push(newPhoto);
+          } else {
+            sidePhotos.push(newPhoto);
+          }
         });
 
-        // Yeni fotoğrafları eklemeden önce kısa bir gecikme ekle
+        // Önce yan sütunları yükle
         loadingTimeoutRef.current = setTimeout(() => {
-          setPhotos(prev => [...prev, ...newPhotos]);
-          setPage(prev => prev + 1);
-          setIsLoading(false);
-        }, 500);
+          setPhotos(prev => [...prev, ...sidePhotos]);
+          
+          // Sonra orta sütunu yükle (300ms gecikme ile)
+          setTimeout(() => {
+            setPhotos(prev => [...prev, ...centerPhotos]);
+            setPage(prev => prev + 1);
+            setIsLoading(false);
+          }, 300);
+        }, 200);
+
       } else {
         setHasMore(false);
         setIsLoading(false);
