@@ -59,12 +59,13 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
   const [hasMore, setHasMore] = useState(true);
   const observer = useRef<IntersectionObserver | null>(null);
   const lastPhotoRef = useRef<HTMLDivElement | null>(null);
+  const loadingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const getColumnType = (index: number): 'left' | 'center' | 'right' => {
     const position = index % 3;
     if (position === 0) return 'left';
-    if (position === 1) return 'right';
-    return 'center';
+    if (position === 1) return 'center';
+    return 'right';
   };
 
   const getRandomSize = (sizes: Array<{ width: number; height: number }>) => {
@@ -76,6 +77,12 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
 
     try {
       setIsLoading(true);
+
+      // Önceki timeout'u temizle
+      if (loadingTimeoutRef.current) {
+        clearTimeout(loadingTimeoutRef.current);
+      }
+
       const response = await fetch(`/api/photos?page=${page + 1}`);
       const data = await response.json();
 
@@ -94,6 +101,10 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
             height = randomSize.height;
           }
 
+          // Fotoğrafı önceden yükle
+          const img = new Image();
+          img.src = photo.urls.regular;
+
           return {
             id: photo.id,
             url: photo.urls.regular,
@@ -104,17 +115,30 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
           };
         });
 
-        setPhotos(prev => [...prev, ...newPhotos]);
-        setPage(prev => prev + 1);
+        // Yeni fotoğrafları eklemeden önce kısa bir gecikme ekle
+        loadingTimeoutRef.current = setTimeout(() => {
+          setPhotos(prev => [...prev, ...newPhotos]);
+          setPage(prev => prev + 1);
+          setIsLoading(false);
+        }, 500);
       } else {
         setHasMore(false);
+        setIsLoading(false);
       }
     } catch (error) {
       console.error('Error loading photos:', error);
-    } finally {
       setIsLoading(false);
     }
   }, [page, isLoading, hasMore, photos.length]);
+
+  // Component unmount olduğunda timeout'u temizle
+  useEffect(() => {
+    return () => {
+      if (loadingTimeoutRef.current) {
+        clearTimeout(loadingTimeoutRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     loadPhotos();
@@ -129,7 +153,7 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
         }
       },
       {
-        rootMargin: '200px',
+        rootMargin: '500px', // Daha erken yüklemeye başla
         threshold: 0.1
       }
     );
@@ -165,12 +189,21 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
           overflow: hidden;
           transform: translateZ(0);
           transition: transform 0.3s ease;
+          opacity: 0;
+          animation: fadeIn 0.5s ease forwards;
         }
         .photo-container:hover {
           transform: translateZ(0) scale(1.02);
         }
-        .photo-container.center-column {
-          max-height: 800px;
+        @keyframes fadeIn {
+          from {
+            opacity: 0;
+            transform: translateY(20px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
         }
       `}</style>
 
@@ -195,7 +228,7 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
                   className="object-cover rounded-lg"
                   sizes="(max-width: 640px) 100vw, (max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw"
                   loading="eager"
-                  priority={getColumnType(index) !== 'center'}
+                  unoptimized
                 />
                 <div className="absolute inset-0 bg-black opacity-0 group-hover:opacity-40 transition-opacity duration-300" />
                 <div className="absolute bottom-0 left-0 right-0 p-4 text-white transform translate-y-full group-hover:translate-y-0 transition-transform duration-300">
