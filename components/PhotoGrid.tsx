@@ -63,8 +63,8 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
   const getColumnType = (index: number): 'left' | 'center' | 'right' => {
     const position = index % 3;
     if (position === 0) return 'left';
-    if (position === 1) return 'center';
-    return 'right';
+    if (position === 1) return 'right';
+    return 'center';
   };
 
   const getRandomSize = (sizes: Array<{ width: number; height: number }>) => {
@@ -194,8 +194,8 @@ export default function PhotoGrid({ initialPhotos }: { initialPhotos: Photo[] })
                   fill
                   className="object-cover rounded-lg"
                   sizes="(max-width: 640px) 100vw, (max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw"
-                  priority={index < 12}
-                  loading={index < 24 ? "eager" : "lazy"}
+                  loading="eager"
+                  priority={getColumnType(index) !== 'center'}
                 />
                 <div className="absolute inset-0 bg-black opacity-0 group-hover:opacity-40 transition-opacity duration-300" />
                 <div className="absolute bottom-0 left-0 right-0 p-4 text-white transform translate-y-full group-hover:translate-y-0 transition-transform duration-300">
